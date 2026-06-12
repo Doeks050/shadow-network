@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { player } from "@/data/player";
 
 const menuItems = [
   { label: "RAID", href: "/raid" },
@@ -19,10 +20,10 @@ export default function Home() {
         </h1>
 
         <section className="mb-8 border border-zinc-800 bg-zinc-900/60 p-5">
-          <p>PMC: Rookie</p>
-          <p>Level: 1</p>
-          <p>Cash: $1,000</p>
-          <p>Income/hr: $0</p>
+          <p>PMC: {player.pmcName}</p>
+          <p>Level: {player.level}</p>
+          <p>Cash: ${player.cash.toLocaleString()}</p>
+          <p>Income/hr: ${player.incomePerHour.toLocaleString()}</p>
         </section>
 
         <nav className="grid gap-3">
