@@ -1,11 +1,27 @@
-export const loadout = {
-  primaryWeapon: "No primary weapon",
-  primaryAmmo: "No ammo",
-  sidearm: "Glock 17",
-  sidearmAmmo: "9x19 FMJ x30",
-  armor: "No body armor",
-  helmet: "No head protection",
-  rig: "No chest rig",
-  backpack: "Small Backpack",
-  medical: "Bandage x1",
+export type CarryContainer = "pockets" | "rig" | "armor" | "backpack";
+
+export type CarriedItemStack = {
+  itemId: string;
+  quantity: number;
+  container: CarryContainer;
+};
+
+export type PlayerLoadout = {
+  primaryWeaponId: string;
+  sidearmId: string;
+  armorId: string;
+  helmetId: string;
+  rigId: string;
+  backpackId: string;
+  carriedItems: CarriedItemStack[];
+};
+
+export const loadout: PlayerLoadout = {
+  primaryWeaponId: "m4a1",
+  sidearmId: "glock_17",
+  armorId: "soft_armor_vest",
+  helmetId: "basic_helmet",
+  rigId: "scout_rig",
+  backpackId: "small_backpack",
+  carriedItems: [],
 };
