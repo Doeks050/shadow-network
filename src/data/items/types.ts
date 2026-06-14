@@ -17,13 +17,37 @@ export type ItemCategory =
 export type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 export type AmmoType =
+  | "22lr"
+  | "380acp"
+  | "9x18"
   | "9x19"
+  | "357magnum"
+  | "40sw"
   | "45acp"
+  | "50ae"
+  | "46x30"
+  | "57x28"
+  | "545x39"
   | "556x45"
+  | "68spc"
+  | "300blackout"
   | "762x39"
   | "762x51"
+  | "308"
+  | "762x54r"
+  | "30-06"
   | "9x39"
-  | "50bmg";
+  | "127x55"
+  | "65creedmoor"
+  | "300winmag"
+  | "338lapua"
+  | "408cheytac"
+  | "50bmg"
+  | "12gauge"
+  | "20gauge"
+  | "10gauge"
+  | "410bore"
+  | "44magnum";
 
 export type AttachmentSlot =
   | "optic"
