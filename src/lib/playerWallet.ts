@@ -4,8 +4,8 @@ export type StoredWallet = {
   cash: number;
 };
 
-const defaultWallet: StoredWallet = {
-  cash: 1000,
+export const defaultWallet: StoredWallet = {
+  cash: 25000,
 };
 
 export function getStoredWallet(): StoredWallet {
@@ -22,11 +22,12 @@ export function getStoredWallet(): StoredWallet {
   try {
     const parsed = JSON.parse(rawWallet);
 
-    if (typeof parsed.cash !== "number") {
-      return defaultWallet;
-    }
-
-    return parsed;
+    return {
+      cash:
+        typeof parsed.cash === "number" && Number.isFinite(parsed.cash)
+          ? parsed.cash
+          : defaultWallet.cash,
+    };
   } catch {
     return defaultWallet;
   }
@@ -34,14 +35,6 @@ export function getStoredWallet(): StoredWallet {
 
 export function saveStoredWallet(wallet: StoredWallet) {
   window.localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(wallet));
-}
-
-export function addCashToWallet(amount: number) {
-  const wallet = getStoredWallet();
-
-  saveStoredWallet({
-    cash: wallet.cash + amount,
-  });
 }
 
 export function spendCashFromWallet(amount: number): boolean {
@@ -56,6 +49,14 @@ export function spendCashFromWallet(amount: number): boolean {
   });
 
   return true;
+}
+
+export function addCashToWallet(amount: number) {
+  const wallet = getStoredWallet();
+
+  saveStoredWallet({
+    cash: wallet.cash + amount,
+  });
 }
 
 export function clearStoredWallet() {

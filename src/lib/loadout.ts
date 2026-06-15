@@ -1,6 +1,15 @@
-import type { CarryContainer, PlayerLoadout } from "@/data/loadout";
-import type { GameItem } from "@/data/items";
+import type {
+  CarryContainer,
+  PlayerLoadout,
+  WeaponAttachmentSlots,
+} from "@/data/loadout";
+import type { AttachmentItem, GameItem, MagazineItem } from "@/data/items";
+import type { WeaponItem } from "@/data/items/weapons/types";
 import { getItemById } from "@/lib/items";
+import {
+  calculateEffectiveWeaponStats,
+  calculateWeaponCombatScore,
+} from "@/lib/weaponStats";
 
 export type ContainerSlotSummary = {
   used: number;
@@ -18,18 +27,89 @@ const basePocketSlots = 4;
 function getNumberStat(itemId: string, statName: string): number {
   const item = getItemById(itemId);
 
-  if (!item || !("stats" in item) || !item.stats) {
+  if (!item) {
     return 0;
   }
 
-  const stats = item.stats as Record<string, unknown>;
-  const value = stats[statName];
+  const itemRecord = item as unknown as Record<string, unknown>;
+  const directValue = itemRecord[statName];
 
-  return typeof value === "number" ? value : 0;
+  if (typeof directValue === "number" && Number.isFinite(directValue)) {
+    return directValue;
+  }
+
+  const stats = itemRecord.stats;
+
+  if (!stats || typeof stats !== "object") {
+    return 0;
+  }
+
+  const statsRecord = stats as Record<string, unknown>;
+  const statsValue = statsRecord[statName];
+
+  return typeof statsValue === "number" && Number.isFinite(statsValue)
+    ? statsValue
+    : 0;
+}
+
+function getWeaponItem(itemId: string): WeaponItem | null {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "weapon") {
+    return null;
+  }
+
+  return item as WeaponItem;
+}
+
+function getMagazineItem(itemId: string): MagazineItem | null {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "magazine") {
+    return null;
+  }
+
+  return item as MagazineItem;
+}
+
+function getAttachmentItem(itemId: string): AttachmentItem | null {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "attachment") {
+    return null;
+  }
+
+  return item as AttachmentItem;
+}
+
+function getAttachedMagazineItem(
+  loadout: PlayerLoadout,
+  instanceId: string
+): MagazineItem | null {
+  if (!instanceId) {
+    return null;
+  }
+
+  const instance = loadout.carriedMagazines.find(
+    (magazine) => magazine.instanceId === instanceId
+  );
+
+  if (!instance) {
+    return null;
+  }
+
+  return getMagazineItem(instance.magazineItemId);
+}
+
+function getAttachmentItems(slots: WeaponAttachmentSlots): AttachmentItem[] {
+  return Object.values(slots)
+    .map((itemId) => getAttachmentItem(itemId))
+    .filter((item): item is AttachmentItem => item !== null);
 }
 
 export function getItemSlotCost(item: GameItem): number {
-  const maybeSlotCost = "slotCost" in item ? item.slotCost : null;
+  const itemRecord = item as unknown as Record<string, unknown>;
+  const maybeSlotCost = itemRecord.slotCost;
 
   if (typeof maybeSlotCost === "number" && Number.isFinite(maybeSlotCost)) {
     return Math.max(1, Math.floor(maybeSlotCost));
@@ -40,6 +120,10 @@ export function getItemSlotCost(item: GameItem): number {
   }
 
   if (item.category === "medical") {
+    return 1;
+  }
+
+  if (item.category === "magazine") {
     return 1;
   }
 
@@ -68,15 +152,7 @@ function createEmptyCarrySlots(): Record<CarryContainer, ContainerSlotSummary> {
       used: 0,
       total: basePocketSlots,
     },
-    rig: {
-      used: 0,
-      total: 0,
-    },
-    armor: {
-      used: 0,
-      total: 0,
-    },
-    backpack: {
+    chest: {
       used: 0,
       total: 0,
     },
@@ -88,15 +164,21 @@ function getContainerTotals(
 ): Record<CarryContainer, ContainerSlotSummary> {
   const carrySlots = createEmptyCarrySlots();
 
-  carrySlots.rig.total = getNumberStat(loadout.rigId, "capacity");
-  carrySlots.armor.total = getNumberStat(loadout.armorId, "capacity");
-  carrySlots.backpack.total = getNumberStat(loadout.backpackId, "capacity");
+  carrySlots.chest.total =
+    getNumberStat(loadout.rigId, "slots") + getNumberStat(loadout.armorId, "slots");
 
   for (const entry of loadout.carriedItems) {
     carrySlots[entry.container].used += getCarriedItemSlotCost(
       entry.itemId,
       entry.quantity
     );
+  }
+
+  for (const magazine of loadout.carriedMagazines) {
+    const magazineItem = getMagazineItem(magazine.magazineItemId);
+    carrySlots[magazine.container].used += magazineItem
+      ? getItemSlotCost(magazineItem)
+      : 1;
   }
 
   return carrySlots;
@@ -107,27 +189,53 @@ export function getContainerLabel(container: CarryContainer): string {
     return "Pockets";
   }
 
-  if (container === "rig") {
-    return "Rig";
+  return "Chest";
+}
+
+function calculateWeaponSlotScore(
+  loadout: PlayerLoadout,
+  weaponId: string,
+  magazineInstanceId: string,
+  attachments: WeaponAttachmentSlots
+): number {
+  const weapon = getWeaponItem(weaponId);
+
+  if (!weapon) {
+    return 0;
   }
 
-  if (container === "armor") {
-    return "Armor";
-  }
+  const magazine = getAttachedMagazineItem(loadout, magazineInstanceId);
+  const attachmentItems = getAttachmentItems(attachments);
+  const effectiveStats = calculateEffectiveWeaponStats(
+    weapon,
+    magazine,
+    attachmentItems
+  );
 
-  return "Backpack";
+  return calculateWeaponCombatScore(effectiveStats);
 }
 
 export function calculateLoadoutStats(loadout: PlayerLoadout): LoadoutStats {
-  const primaryWeaponDamage = getNumberStat(loadout.primaryWeaponId, "damage");
-  const sidearmDamage = getNumberStat(loadout.sidearmId, "damage");
+  const primaryScore = calculateWeaponSlotScore(
+    loadout,
+    loadout.primaryWeaponId,
+    loadout.primaryMagazineInstanceId,
+    loadout.primaryAttachments
+  );
+
+  const secondaryScore = calculateWeaponSlotScore(
+    loadout,
+    loadout.secondaryWeaponId,
+    loadout.secondaryMagazineInstanceId,
+    loadout.secondaryAttachments
+  );
 
   const armorProtection = getNumberStat(loadout.armorId, "protection");
-  const helmetProtection = getNumberStat(loadout.helmetId, "protection");
+  const headgearProtection = getNumberStat(loadout.headgearId, "protection");
 
   return {
-    combatScore: primaryWeaponDamage + sidearmDamage,
-    protectionScore: armorProtection + helmetProtection,
+    combatScore: primaryScore + secondaryScore,
+    protectionScore: armorProtection + headgearProtection,
     carrySlots: getContainerTotals(loadout),
   };
 }

@@ -1,4 +1,17 @@
-export type CarryContainer = "pockets" | "rig" | "armor" | "backpack";
+import type { AttachmentSlot } from "@/data/items";
+
+export type CarryContainer = "pockets" | "chest";
+
+export type WeaponAttachmentSlots = {
+  opticId: string;
+  barrelId: string;
+  muzzleId: string;
+  underbarrelId: string;
+  tacticalId: string;
+  stockId: string;
+};
+
+export type WeaponAttachmentSlotId = keyof WeaponAttachmentSlots;
 
 export type CarriedItemStack = {
   itemId: string;
@@ -6,22 +19,63 @@ export type CarriedItemStack = {
   container: CarryContainer;
 };
 
+export type CarriedMagazine = {
+  instanceId: string;
+  magazineItemId: string;
+  loadedAmmoId: string;
+  loadedRounds: number;
+  container: CarryContainer;
+};
+
 export type PlayerLoadout = {
   primaryWeaponId: string;
-  sidearmId: string;
+  primaryMagazineInstanceId: string;
+  primaryAttachments: WeaponAttachmentSlots;
+
+  secondaryWeaponId: string;
+  secondaryMagazineInstanceId: string;
+  secondaryAttachments: WeaponAttachmentSlots;
+
+  headgearId: string;
   armorId: string;
-  helmetId: string;
   rigId: string;
-  backpackId: string;
   carriedItems: CarriedItemStack[];
+  carriedMagazines: CarriedMagazine[];
+};
+
+export const emptyWeaponAttachments: WeaponAttachmentSlots = {
+  opticId: "",
+  barrelId: "",
+  muzzleId: "",
+  underbarrelId: "",
+  tacticalId: "",
+  stockId: "",
+};
+
+export const attachmentSlotIdToAttachmentSlot: Record<
+  WeaponAttachmentSlotId,
+  AttachmentSlot
+> = {
+  opticId: "optic",
+  barrelId: "barrel",
+  muzzleId: "muzzle",
+  underbarrelId: "underbarrel",
+  tacticalId: "tactical",
+  stockId: "stock",
 };
 
 export const loadout: PlayerLoadout = {
   primaryWeaponId: "m4a1",
-  sidearmId: "glock_17",
+  primaryMagazineInstanceId: "",
+  primaryAttachments: emptyWeaponAttachments,
+
+  secondaryWeaponId: "glock_17",
+  secondaryMagazineInstanceId: "",
+  secondaryAttachments: emptyWeaponAttachments,
+
+  headgearId: "basic_helmet",
   armorId: "soft_armor_vest",
-  helmetId: "basic_helmet",
   rigId: "scout_rig",
-  backpackId: "small_backpack",
   carriedItems: [],
+  carriedMagazines: [],
 };

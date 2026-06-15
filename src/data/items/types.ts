@@ -4,6 +4,7 @@ import type { WeaponItem } from "./weapons/types";
 export type ItemCategory =
   | "weapon"
   | "ammo"
+  | "magazine"
   | "armor"
   | "helmet"
   | "rig"
@@ -52,7 +53,9 @@ export type AmmoType =
 export type AttachmentSlot =
   | "optic"
   | "muzzle"
+  | "barrel"
   | "underbarrel"
+  | "tactical"
   | "magazine"
   | "stock";
 
@@ -64,11 +67,27 @@ export type BaseItem = {
   value: number;
 };
 
+export type MagazineItem = BaseItem & {
+  category: "magazine";
+  attachmentSlot: "magazine";
+  magazineFamily: string;
+  ammoType: AmmoType;
+  capacity: number;
+  slotCost: number;
+  weight: number;
+  damageOutputModifier: number;
+  handlingModifier: number;
+  recoilControlModifier: number;
+  reloadSpeedModifier: number;
+  reliabilityModifier: number;
+};
+
 export type ArmorItem = BaseItem & {
   category: "armor";
   protection: number;
   durability: number;
   weight: number;
+  slots?: number;
 };
 
 export type HelmetItem = BaseItem & {
@@ -94,13 +113,20 @@ export type BackpackItem = BaseItem & {
 export type MedicalItem = BaseItem & {
   category: "medical";
   healingPower: number;
+  slotCost?: number;
 };
 
 export type AttachmentItem = BaseItem & {
   category: "attachment";
   slot: AttachmentSlot;
-  accuracyModifier: number;
-  ammoCapacityModifier?: number;
+  attachmentFamily: string;
+  compatibleWeaponFamilies?: string[];
+  accuracyModifier?: number;
+  handlingModifier?: number;
+  recoilControlModifier?: number;
+  reloadSpeedModifier?: number;
+  fireRateModifier?: number;
+  reliabilityModifier?: number;
 };
 
 export type ValuableItem = BaseItem & {
@@ -118,6 +144,7 @@ export type LootItem = BaseItem & {
 export type GameItem =
   | WeaponItem
   | AmmoItem
+  | MagazineItem
   | ArmorItem
   | HelmetItem
   | RigItem

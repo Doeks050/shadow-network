@@ -78,9 +78,9 @@ export default function ItemStats({ item }: ItemStatsProps) {
         <p className="text-sm text-zinc-400">
           Accuracy Modifier: {item.accuracyModifier}
         </p>
-        {item.ammoCapacityModifier !== undefined && (
+        {item.reloadSpeedModifier !== undefined && (
           <p className="text-sm text-zinc-400">
-            Ammo Capacity Modifier: {item.ammoCapacityModifier}
+            Ammo Capacity Modifier: {item.reloadSpeedModifier}
           </p>
         )}
       </>

@@ -7,7 +7,8 @@ import Button from "@/components/ui/Button";
 import Panel from "@/components/ui/Panel";
 import SectionTitle from "@/components/ui/SectionTitle";
 import { marketCategorySections } from "@/config/market.config";
-import type { GameItem } from "@/data/items";
+import type { AttachmentSlot, GameItem } from "@/data/items";
+import type { WeaponItem } from "@/data/items/weapons/types";
 import { formatCash } from "@/lib/format";
 import {
   getMarketDisplayListings,
@@ -31,7 +32,24 @@ import {
 
 type QuantityState = Record<string, number>;
 
-type WeaponFilter = "all" | "pistol" | "smg" | "assault_rifle" | "battle_rifle" | "marksman_rifle" | "sniper_rifle";
+type WeaponFilter =
+  | "all"
+  | "pistol"
+  | "smg"
+  | "assault_rifle"
+  | "battle_rifle"
+  | "marksman_rifle"
+  | "sniper_rifle";
+
+type AttachmentFilter =
+  | "all"
+  | "magazine"
+  | "optic"
+  | "barrel"
+  | "muzzle"
+  | "underbarrel"
+  | "tactical"
+  | "stock";
 
 const weaponFilters: { id: WeaponFilter; label: string }[] = [
   { id: "all", label: "All Weapons" },
@@ -43,12 +61,27 @@ const weaponFilters: { id: WeaponFilter; label: string }[] = [
   { id: "sniper_rifle", label: "Sniper Rifles" },
 ];
 
+const attachmentFilters: { id: AttachmentFilter; label: string }[] = [
+  { id: "all", label: "All Attachments" },
+  { id: "magazine", label: "Magazines" },
+  { id: "optic", label: "Optics" },
+  { id: "barrel", label: "Barrels" },
+  { id: "muzzle", label: "Muzzles" },
+  { id: "underbarrel", label: "Underbarrel" },
+  { id: "tactical", label: "Tactical" },
+  { id: "stock", label: "Stocks" },
+];
+
 function isAmmo(item: GameItem): boolean {
   return item.category === "ammo";
 }
 
-function isWeapon(item: GameItem): boolean {
+function isWeapon(item: GameItem): item is WeaponItem {
   return item.category === "weapon";
+}
+
+function isAttachmentSectionItem(item: GameItem): boolean {
+  return item.category === "attachment" || item.category === "magazine";
 }
 
 function getWeaponType(item: GameItem): string | null {
@@ -57,6 +90,31 @@ function getWeaponType(item: GameItem): string | null {
   }
 
   return item.weaponType;
+}
+
+function getAttachmentType(item: GameItem): AttachmentFilter | null {
+  if (item.category === "magazine") {
+    return "magazine";
+  }
+
+  if (item.category !== "attachment") {
+    return null;
+  }
+
+  return item.slot as AttachmentSlot;
+}
+
+function getItemTypeLabel(item: GameItem): string {
+  if (isWeapon(item)) {
+    return item.weaponType.replaceAll("_", " ");
+  }
+
+  if (isAttachmentSectionItem(item)) {
+    const attachmentType = getAttachmentType(item);
+    return attachmentType ? attachmentType.replaceAll("_", " ") : "-";
+  }
+
+  return item.category.replaceAll("_", " ");
 }
 
 function clampQuantity(value: number): number {
@@ -107,6 +165,32 @@ function filterWeaponSellListings(
   );
 }
 
+function filterAttachmentBuyListings(
+  listings: MarketDisplayListing[],
+  activeAttachmentFilter: AttachmentFilter
+): MarketDisplayListing[] {
+  if (activeAttachmentFilter === "all") {
+    return listings;
+  }
+
+  return listings.filter(
+    (listing) => getAttachmentType(listing.item) === activeAttachmentFilter
+  );
+}
+
+function filterAttachmentSellListings(
+  listings: SellDisplayListing[],
+  activeAttachmentFilter: AttachmentFilter
+): SellDisplayListing[] {
+  if (activeAttachmentFilter === "all") {
+    return listings;
+  }
+
+  return listings.filter(
+    (listing) => getAttachmentType(listing.item) === activeAttachmentFilter
+  );
+}
+
 export default function MarketPage() {
   const [wallet, setWallet] = useState<StoredWallet>({
     cash: 1000,
@@ -115,7 +199,10 @@ export default function MarketPage() {
   const [stash, setStash] = useState<StoredStashItem[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [buyQuantities, setBuyQuantities] = useState<QuantityState>({});
-  const [activeWeaponFilter, setActiveWeaponFilter] = useState<WeaponFilter>("all");
+  const [activeWeaponFilter, setActiveWeaponFilter] =
+    useState<WeaponFilter>("all");
+  const [activeAttachmentFilter, setActiveAttachmentFilter] =
+    useState<AttachmentFilter>("all");
   const [activeSectionId, setActiveSectionId] = useState(
     marketCategorySections[0].id
   );
@@ -125,6 +212,9 @@ export default function MarketPage() {
     marketCategorySections[0];
 
   const isWeaponSection = activeSection.categories.includes("weapon");
+  const isAttachmentSection =
+    activeSection.categories.includes("attachment") ||
+    activeSection.categories.includes("magazine");
 
   function refreshMarketData() {
     setWallet(getStoredWallet());
@@ -145,6 +235,7 @@ export default function MarketPage() {
   function handleSectionChange(sectionId: string) {
     setActiveSectionId(sectionId);
     setActiveWeaponFilter("all");
+    setActiveAttachmentFilter("all");
     setMessage(null);
   }
 
@@ -201,10 +292,14 @@ export default function MarketPage() {
 
   const buyListings = isWeaponSection
     ? filterWeaponBuyListings(categoryBuyListings, activeWeaponFilter)
+    : isAttachmentSection
+    ? filterAttachmentBuyListings(categoryBuyListings, activeAttachmentFilter)
     : categoryBuyListings;
 
   const sellListings = isWeaponSection
     ? filterWeaponSellListings(categorySellListings, activeWeaponFilter)
+    : isAttachmentSection
+    ? filterAttachmentSellListings(categorySellListings, activeAttachmentFilter)
     : categorySellListings;
 
   return (
@@ -258,6 +353,20 @@ export default function MarketPage() {
                 ))}
               </div>
             )}
+
+            {isAttachmentSection && (
+              <div className="flex flex-wrap gap-2 border-t border-zinc-800 pt-3">
+                {attachmentFilters.map((filter) => (
+                  <Button
+                    key={filter.id}
+                    active={activeAttachmentFilter === filter.id}
+                    onClick={() => setActiveAttachmentFilter(filter.id)}
+                  >
+                    {filter.label}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         </Panel>
 
@@ -277,7 +386,7 @@ export default function MarketPage() {
                   <thead>
                     <tr className="border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500">
                       <th className="py-2 pr-3">Item</th>
-                      {isWeaponSection && (
+                      {(isWeaponSection || isAttachmentSection) && (
                         <th className="py-2 pr-3">Type</th>
                       )}
                       <th className="py-2 pr-3 text-right">Buy Price</th>
@@ -309,11 +418,9 @@ export default function MarketPage() {
                             </button>
                           </td>
 
-                          {isWeaponSection && (
+                          {(isWeaponSection || isAttachmentSection) && (
                             <td className="py-2 pr-3 text-xs uppercase text-zinc-500">
-                              {isWeapon(listing.item)
-                                ? getWeaponType(listing.item)
-                                : "-"}
+                              {getItemTypeLabel(listing.item)}
                             </td>
                           )}
 
@@ -374,7 +481,7 @@ export default function MarketPage() {
                   <thead>
                     <tr className="border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500">
                       <th className="py-2 pr-3">Item</th>
-                      {isWeaponSection && (
+                      {(isWeaponSection || isAttachmentSection) && (
                         <th className="py-2 pr-3">Type</th>
                       )}
                       <th className="py-2 pr-3 text-right">Owned</th>
@@ -398,11 +505,9 @@ export default function MarketPage() {
                           </button>
                         </td>
 
-                        {isWeaponSection && (
+                        {(isWeaponSection || isAttachmentSection) && (
                           <td className="py-2 pr-3 text-xs uppercase text-zinc-500">
-                            {isWeapon(listing.item)
-                              ? getWeaponType(listing.item)
-                              : "-"}
+                            {getItemTypeLabel(listing.item)}
                           </td>
                         )}
 
@@ -426,7 +531,7 @@ export default function MarketPage() {
               </div>
             ) : (
               <p className="text-sm text-zinc-500">
-                You have no stash items in this category.
+                No owned items in this category.
               </p>
             )}
           </div>
