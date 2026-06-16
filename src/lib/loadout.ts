@@ -156,14 +156,6 @@ function createEmptyCarrySlots(): Record<CarryContainer, ContainerSlotSummary> {
       used: 0,
       total: 0,
     },
-    backpack: {
-      used: 0,
-      total: 0,
-    },
-    pouch: {
-      used: 0,
-      total: 0,
-    },
   };
 }
 
@@ -175,8 +167,6 @@ function getContainerTotals(
   carrySlots.chest.total =
     getNumberStat(loadout.rigId, "slots") + getNumberStat(loadout.armorId, "slots");
 
-  carrySlots.backpack.total = getNumberStat(loadout.backpackId, "slots");
-  carrySlots.pouch.total = getNumberStat(loadout.pouchId, "slots");
 
   for (const entry of loadout.carriedItems) {
     carrySlots[entry.container].used += getCarriedItemSlotCost(

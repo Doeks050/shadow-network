@@ -1,10 +1,32 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getItemById } from "@/lib/items";
+import { calculateLoadoutStats } from "@/lib/loadout";
+import { getStoredLoadout, saveStoredLoadout } from "@/lib/playerLoadout";
+import {
+  getStoredStash,
+  saveStoredStash,
+  type StoredStashItem,
+} from "@/lib/playerStash";
+import type { AttachmentItem, GameItem, ItemCategory } from "@/data/items";
+import {
+  attachmentSlotIdToAttachmentSlot,
+  type PlayerLoadout,
+  type WeaponAttachmentSlotId,
+} from "@/data/loadout";
+import type { WeaponItem } from "@/data/items/weapons/types";
+import { isAttachmentCompatibleWithWeapon } from "@/lib/weaponStats";
+
+type LoadoutSlot = "primary" | "secondary" | "headgear" | "chestgear";
+type WeaponSlot = "primary" | "secondary";
+
 type WeaponRowProps = {
   label: string;
   name: string;
   caliber: string;
   visual: string;
+  onClick: () => void;
 };
 
 type GearRowProps = {
@@ -14,6 +36,9 @@ type GearRowProps = {
   metricValue: string;
   icon: string;
   bar?: number;
+  onClick?: () => void;
+  openLabel?: string;
+  onOpen?: () => void;
 };
 
 type MiniLineProps = {
@@ -22,6 +47,240 @@ type MiniLineProps = {
   icon?: string;
   danger?: boolean;
 };
+
+const weaponAttachmentSlotLabels: Record<WeaponAttachmentSlotId, string> = {
+  opticId: "Optic",
+  barrelId: "Barrel",
+  muzzleId: "Muzzle",
+  underbarrelId: "Underbarrel",
+  tacticalId: "Tactical",
+  stockId: "Stock",
+};
+
+const weaponAttachmentSlotOrder: WeaponAttachmentSlotId[] = [
+  "opticId",
+  "barrelId",
+  "muzzleId",
+  "underbarrelId",
+  "tacticalId",
+  "stockId",
+];
+
+
+function getDisplayName(itemId: string, fallback = "Empty"): string {
+  if (!itemId) return fallback;
+  return getItemById(itemId)?.name ?? itemId;
+}
+
+function getWeaponCaliber(itemId: string): string {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "weapon") {
+    return "No weapon equipped";
+  }
+
+  return item.ammoType.toUpperCase();
+}
+
+function getDurabilityText(itemId: string): string {
+  const item = getItemById(itemId);
+
+  if (!item || !("durability" in item) || typeof item.durability !== "number") {
+    return "-";
+  }
+
+  return `${item.durability} / ${item.durability}`;
+}
+
+function getDurabilityBar(itemId: string): number {
+  const item = getItemById(itemId);
+
+  if (!item || !("durability" in item) || typeof item.durability !== "number") {
+    return 0;
+  }
+
+  return 100;
+}
+
+function itemMatchesCategory(item: GameItem, categories: ItemCategory[]): boolean {
+  return categories.includes(item.category);
+}
+
+function mergeStashItems(
+  currentStash: StoredStashItem[],
+  additions: StoredStashItem[]
+): StoredStashItem[] {
+  const merged = new Map<string, number>();
+
+  for (const item of currentStash) {
+    merged.set(item.itemId, (merged.get(item.itemId) ?? 0) + item.quantity);
+  }
+
+  for (const item of additions) {
+    merged.set(item.itemId, (merged.get(item.itemId) ?? 0) + item.quantity);
+  }
+
+  return Array.from(merged.entries()).map(([itemId, quantity]) => ({
+    itemId,
+    quantity,
+  }));
+}
+
+function getDevTestStashItems(): StoredStashItem[] {
+  return [
+    { itemId: "m4a1", quantity: 1 },
+    { itemId: "glock_17", quantity: 1 },
+    { itemId: "ak_74", quantity: 1 },
+    { itemId: "mp5", quantity: 1 },
+
+    { itemId: "basic_helmet", quantity: 1 },
+    { itemId: "soft_armor_vest", quantity: 1 },
+    { itemId: "scout_rig", quantity: 1 },
+
+    { itemId: "m4_stanag_30", quantity: 3 },
+    { itemId: "glock_17_mag_17", quantity: 3 },
+    { itemId: "ak_74_mag_30", quantity: 3 },
+    { itemId: "mp5_mag_30", quantity: 3 },
+
+    { itemId: "556x45_fmj", quantity: 120 },
+    { itemId: "9x19_fmj", quantity: 120 },
+    { itemId: "545x39_fmj", quantity: 120 },
+
+    { itemId: "red_dot_sight", quantity: 1 },
+    { itemId: "holographic_sight", quantity: 1 },
+    { itemId: "vertical_grip", quantity: 1 },
+    { itemId: "flashlight", quantity: 1 },
+    { itemId: "suppressor_556", quantity: 1 },
+    { itemId: "suppressor_9mm", quantity: 1 },
+  ].filter((entry) => getItemById(entry.itemId) !== null);
+}
+
+
+function getWeaponItem(itemId: string): WeaponItem | null {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "weapon") {
+    return null;
+  }
+
+  return item as WeaponItem;
+}
+
+function getAttachmentItem(itemId: string): AttachmentItem | null {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "attachment") {
+    return null;
+  }
+
+  return item as AttachmentItem;
+}
+
+function getWeaponIdForSlot(loadout: PlayerLoadout, slot: WeaponSlot): string {
+  return slot === "primary" ? loadout.primaryWeaponId : loadout.secondaryWeaponId;
+}
+
+function getAttachmentIdForSlot(
+  loadout: PlayerLoadout,
+  weaponSlot: WeaponSlot,
+  attachmentSlotId: WeaponAttachmentSlotId
+): string {
+  return weaponSlot === "primary"
+    ? loadout.primaryAttachments[attachmentSlotId]
+    : loadout.secondaryAttachments[attachmentSlotId];
+}
+
+function weaponSupportsAttachmentSlot(
+  weaponId: string,
+  attachmentSlotId: WeaponAttachmentSlotId
+): boolean {
+  const weapon = getWeaponItem(weaponId);
+
+  if (!weapon) {
+    return false;
+  }
+
+  const slot = attachmentSlotIdToAttachmentSlot[attachmentSlotId];
+  const families = weapon.attachmentFamilies[slot];
+
+  return Array.isArray(families) && families.length > 0;
+}
+
+function getCompatibleAttachmentsFromStash(
+  stashItems: GameItem[],
+  weaponId: string,
+  attachmentSlotId: WeaponAttachmentSlotId
+): AttachmentItem[] {
+  const weapon = getWeaponItem(weaponId);
+
+  if (!weapon) {
+    return [];
+  }
+
+  const slot = attachmentSlotIdToAttachmentSlot[attachmentSlotId];
+
+  return stashItems
+    .filter((item): item is AttachmentItem => item.category === "attachment")
+    .filter((attachment) => attachment.slot === slot)
+    .filter((attachment) => isAttachmentCompatibleWithWeapon(weapon, attachment))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getAttachmentModifierText(attachment: AttachmentItem): string {
+  const parts: string[] = [];
+
+  if (attachment.accuracyModifier) {
+    parts.push(`ACC ${attachment.accuracyModifier > 0 ? "+" : ""}${attachment.accuracyModifier}`);
+  }
+
+  if (attachment.handlingModifier) {
+    parts.push(`HDL ${attachment.handlingModifier > 0 ? "+" : ""}${attachment.handlingModifier}`);
+  }
+
+  if (attachment.recoilControlModifier) {
+    parts.push(`REC ${attachment.recoilControlModifier > 0 ? "+" : ""}${attachment.recoilControlModifier}`);
+  }
+
+  if (attachment.reloadSpeedModifier) {
+    parts.push(`RLD ${attachment.reloadSpeedModifier > 0 ? "+" : ""}${attachment.reloadSpeedModifier}`);
+  }
+
+  if (attachment.reliabilityModifier) {
+    parts.push(`REL ${attachment.reliabilityModifier > 0 ? "+" : ""}${attachment.reliabilityModifier}`);
+  }
+
+  if (attachment.fireRateModifier) {
+    parts.push(`RPM ${attachment.fireRateModifier > 0 ? "+" : ""}${attachment.fireRateModifier}`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : "No stat modifiers";
+}
+
+function setWeaponAttachment(
+  loadout: PlayerLoadout,
+  weaponSlot: WeaponSlot,
+  attachmentSlotId: WeaponAttachmentSlotId,
+  attachmentId: string
+): PlayerLoadout {
+  if (weaponSlot === "primary") {
+    return {
+      ...loadout,
+      primaryAttachments: {
+        ...loadout.primaryAttachments,
+        [attachmentSlotId]: attachmentId,
+      },
+    };
+  }
+
+  return {
+    ...loadout,
+    secondaryAttachments: {
+      ...loadout.secondaryAttachments,
+      [attachmentSlotId]: attachmentId,
+    },
+  };
+}
+
 
 function TopHud() {
   return (
@@ -73,10 +332,7 @@ function TitleBlock() {
             Loadout
           </h1>
         </div>
-
-
       </div>
-
     </section>
   );
 }
@@ -106,15 +362,11 @@ function Panel({
   );
 }
 
-function WeaponRow({
-  label,
-  name,
-  caliber,
-  visual,
-}: WeaponRowProps) {
+function WeaponRow({ label, name, caliber, visual, onClick }: WeaponRowProps) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="grid min-h-[74px] w-full grid-cols-[1fr_104px_18px] items-center gap-2 border-b border-zinc-800/75 bg-black/20 px-3 py-2 text-left last:border-b-0 active:bg-zinc-900"
     >
       <div className="min-w-0">
@@ -143,22 +395,26 @@ function GearRow({
   metricValue,
   icon,
   bar,
+  onClick,
+  openLabel,
+  onOpen,
 }: GearRowProps) {
   return (
-    <button
-      type="button"
-      className="grid min-h-[56px] w-full grid-cols-[40px_1fr_66px_16px] items-center gap-2 border-b border-zinc-800/75 bg-black/20 px-3 py-1.5 text-left last:border-b-0 active:bg-zinc-900"
-    >
-      <div className="flex h-8 w-8 items-center justify-center bg-black/40 text-sm text-zinc-500">
+    <div className="grid min-h-[56px] w-full grid-cols-[40px_1fr_66px_auto] items-center gap-2 border-b border-zinc-800/75 bg-black/20 px-3 py-1.5 text-left last:border-b-0">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex h-8 w-8 items-center justify-center bg-black/40 text-sm text-zinc-500 active:bg-zinc-900"
+      >
         {icon}
-      </div>
+      </button>
 
-      <div className="min-w-0">
+      <button type="button" onClick={onClick} className="min-w-0 text-left">
         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-lime-500">
           {label}
         </p>
         <p className="mt-1 truncate text-base font-medium text-zinc-100">{name}</p>
-      </div>
+      </button>
 
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">
@@ -174,8 +430,25 @@ function GearRow({
         )}
       </div>
 
-      <span className="text-xl font-light text-zinc-500">›</span>
-    </button>
+      <div className="flex items-center gap-2">
+        {openLabel && onOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="border border-zinc-800 bg-black px-2 py-1 text-[10px] font-black uppercase tracking-wider text-lime-500 active:bg-zinc-900"
+          >
+            {openLabel}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClick}
+          className="text-xl font-light text-zinc-500 active:text-lime-500"
+        >
+          ›
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -194,17 +467,6 @@ function MiniLine({ label, value, icon, danger }: MiniLineProps) {
         {value}
       </p>
     </div>
-  );
-}
-
-function ConfirmButton() {
-  return (
-    <button
-      type="button"
-      className="mx-3 border border-lime-700/80 bg-lime-950/25 px-4 py-3 text-center text-xl font-black uppercase tracking-[0.16em] text-lime-400 shadow-[inset_0_0_22px_rgba(132,204,22,0.16)] active:bg-lime-900/35"
-    >
-      Confirm Loadout
-    </button>
   );
 }
 
@@ -246,7 +508,113 @@ function BottomNav() {
   );
 }
 
+function getSelectionTitle(slot: LoadoutSlot): string {
+  if (slot === "primary") return "Primary Weapon";
+  if (slot === "secondary") return "Secondary Weapon";
+  if (slot === "headgear") return "Headgear";
+  return "Chestgear";
+}
+
+function getSelectionCategories(slot: LoadoutSlot): ItemCategory[] {
+  if (slot === "primary" || slot === "secondary") return ["weapon"];
+  if (slot === "headgear") return ["helmet"];
+  return ["armor", "rig"];
+}
+
 export default function LoadoutV2Page() {
+  const [currentLoadout, setCurrentLoadout] = useState<PlayerLoadout | null>(null);
+  const [stashItems, setStashItems] = useState<GameItem[]>([]);
+  const [activeSlot, setActiveSlot] = useState<LoadoutSlot | null>(null);
+  const [customizeSlot, setCustomizeSlot] = useState<WeaponSlot | null>(null);
+  const [activeAttachmentSlot, setActiveAttachmentSlot] =
+    useState<WeaponAttachmentSlotId>("opticId");
+
+  function refreshStashItems() {
+    const storedStash = getStoredStash();
+    const mappedItems = storedStash
+      .map((entry) => getItemById(entry.itemId))
+      .filter((item): item is GameItem => item !== null);
+
+    setStashItems(mappedItems);
+  }
+
+  useEffect(() => {
+    setCurrentLoadout(getStoredLoadout());
+    refreshStashItems();
+  }, []);
+
+  if (!currentLoadout) {
+    return (
+      <main className="min-h-screen bg-black text-zinc-100">
+        <div className="mx-auto flex min-h-screen w-full max-w-[430px] items-center justify-center bg-black px-4">
+          <p className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
+            Loading loadout...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const stats = calculateLoadoutStats(currentLoadout);
+  const chestSlots = stats.carrySlots.chest;
+  const selectionItems = activeSlot
+    ? stashItems.filter((item) =>
+        itemMatchesCategory(item, getSelectionCategories(activeSlot))
+      )
+    : [];
+
+  function updateLoadout(nextLoadout: PlayerLoadout) {
+    setCurrentLoadout(nextLoadout);
+    saveStoredLoadout(nextLoadout);
+  }
+
+  function handleSeedTestStash() {
+    const nextStash = mergeStashItems(getStoredStash(), getDevTestStashItems());
+    saveStoredStash(nextStash);
+    refreshStashItems();
+  }
+
+  function handleSelectItem(slot: LoadoutSlot, item: GameItem) {
+    if (!currentLoadout) return;
+
+    if (slot === "primary" && item.category === "weapon") {
+      updateLoadout({
+        ...currentLoadout,
+        primaryWeaponId: item.id,
+        primaryMagazineInstanceId: "",
+      });
+    }
+
+    if (slot === "secondary" && item.category === "weapon") {
+      updateLoadout({
+        ...currentLoadout,
+        secondaryWeaponId: item.id,
+        secondaryMagazineInstanceId: "",
+      });
+    }
+
+    if (slot === "headgear" && item.category === "helmet") {
+      updateLoadout({
+        ...currentLoadout,
+        headgearId: item.id,
+      });
+    }
+
+    if (slot === "chestgear" && item.category === "armor") {
+      updateLoadout({
+        ...currentLoadout,
+        armorId: item.id,
+      });
+    }
+
+    if (slot === "chestgear" && item.category === "rig") {
+      updateLoadout({
+        ...currentLoadout,
+        rigId: item.id,
+      });
+    }
+  }
+
   return (
     <main className="min-h-screen bg-black text-zinc-100">
       <div className="mx-auto min-h-screen w-full max-w-[430px] bg-[radial-gradient(circle_at_top,rgba(63,63,70,0.22),transparent_35%),linear-gradient(180deg,#020202_0%,#090909_100%)]">
@@ -255,45 +623,65 @@ export default function LoadoutV2Page() {
         <div className="grid gap-2 pb-2">
           <TitleBlock />
 
+          <div className="px-3">
+            <button
+              type="button"
+              onClick={handleSeedTestStash}
+              className="w-full border border-zinc-800 bg-black/45 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500 active:bg-zinc-900"
+            >
+              Dev: Add test gear to stash
+            </button>
+          </div>
+
           <div className="grid gap-2 px-3">
             <Panel>
               <WeaponRow
                 label="Primary Weapon"
-                name="HK416A5"
-                caliber="5.56×45 NATO"
+                name={getDisplayName(currentLoadout.primaryWeaponId)}
+                caliber={getWeaponCaliber(currentLoadout.primaryWeaponId)}
                 visual="▰"
+                onClick={() => setActiveSlot("primary")}
               />
               <WeaponRow
                 label="Secondary Weapon"
-                name="MPX"
-                caliber="9×19mm"
+                name={getDisplayName(currentLoadout.secondaryWeaponId)}
+                caliber={getWeaponCaliber(currentLoadout.secondaryWeaponId)}
                 visual="▰"
+                onClick={() => setActiveSlot("secondary")}
               />
             </Panel>
 
             <Panel>
               <GearRow
                 label="Headgear"
-                name="Fast MT"
+                name={getDisplayName(currentLoadout.headgearId)}
                 metricLabel="Durability"
-                metricValue="40 / 40"
+                metricValue={getDurabilityText(currentLoadout.headgearId)}
                 icon="◖"
-                bar={65}
+                bar={getDurabilityBar(currentLoadout.headgearId)}
+                onClick={() => setActiveSlot("headgear")}
               />
               <GearRow
                 label="Chestgear"
-                name="Tac Rig MK3"
-                metricLabel="Durability"
-                metricValue="110 / 110"
+                name={`${getDisplayName(currentLoadout.armorId)} · ${getDisplayName(
+                  currentLoadout.rigId
+                )}`}
+                metricLabel="Slots"
+                metricValue={`${chestSlots.used} / ${chestSlots.total}`}
                 icon="▤"
-                bar={92}
+                bar={getDurabilityBar(currentLoadout.armorId)}
+                onClick={() => setActiveSlot("chestgear")}
+                openLabel="Open"
+                onOpen={() => alert("Chest storage koppelen we in de volgende stap.")}
               />
               <GearRow
                 label="Backpack"
-                name="Pathfinder 45L"
+                name="Small Backpack"
                 metricLabel="Slots"
-                metricValue="8 / 30"
+                metricValue="0 / 8"
                 icon="▧"
+                openLabel="Open"
+                onOpen={() => alert("Backpack storage komt later, want dit zit nog niet in PlayerLoadout.")}
               />
               <GearRow
                 label="Pouch"
@@ -301,23 +689,291 @@ export default function LoadoutV2Page() {
                 metricLabel="Slots"
                 metricValue="0 / 4"
                 icon="▣"
+                openLabel="Open"
+                onOpen={() => alert("Pouch komt later als apart systeem.")}
               />
             </Panel>
 
-              <Panel title="Loadout Stats">
-                <div className="grid grid-cols-2">
-                  <MiniLine icon="♜" label="Weight" value="34.7 / 65 kg" />
-                  <MiniLine icon="◆" label="Armor" value="110 / 110" />
-                  <MiniLine icon="↯" label="Mobility" value="82 / 100" />
-                  <MiniLine icon="⌁" label="Ergonomics" value="68 / 100" />
-                </div>
-              </Panel>
+            <Panel title="Loadout Stats">
+              <div className="grid grid-cols-2">
+                <MiniLine icon="♜" label="Combat" value={String(stats.combatScore)} />
+                <MiniLine icon="◆" label="Armor" value={String(stats.protectionScore)} />
+                <MiniLine
+                  icon="▤"
+                  label="Chest"
+                  value={`${chestSlots.used} / ${chestSlots.total}`}
+                />
+                <MiniLine icon="▧" label="Backpack" value="0 / 8" />
+              </div>
+            </Panel>
           </div>
 
-          <ConfirmButton />
+          <button
+            type="button"
+            onClick={() => currentLoadout && saveStoredLoadout(currentLoadout)}
+            className="mx-3 border border-lime-700/80 bg-lime-950/25 px-4 py-3 text-center text-xl font-black uppercase tracking-[0.16em] text-lime-400 shadow-[inset_0_0_22px_rgba(132,204,22,0.16)] active:bg-lime-900/35"
+          >
+            Confirm Loadout
+          </button>
         </div>
 
         <BottomNav />
+
+        {customizeSlot && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80">
+            <div className="w-full max-w-[430px] border-t border-zinc-700 bg-zinc-950 shadow-2xl">
+              <div className="border-b border-zinc-800 px-4 py-3">
+                <div className="mx-auto mb-3 h-1.5 w-12 bg-zinc-700" />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-500">
+                      Customize
+                    </p>
+                    <h2 className="truncate text-xl font-black uppercase tracking-wider text-zinc-100">
+                      {getDisplayName(getWeaponIdForSlot(currentLoadout, customizeSlot))}
+                    </h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCustomizeSlot(null)}
+                    className="border border-zinc-800 bg-black px-3 py-2 text-xs font-black uppercase tracking-wider text-zinc-400"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 p-3">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {weaponAttachmentSlotOrder.map((slotId) => {
+                    const weaponId = getWeaponIdForSlot(currentLoadout, customizeSlot);
+
+                    if (!weaponSupportsAttachmentSlot(weaponId, slotId)) {
+                      return null;
+                    }
+
+                    const selectedAttachment = getAttachmentItem(
+                      getAttachmentIdForSlot(currentLoadout, customizeSlot, slotId)
+                    );
+
+                    return (
+                      <button
+                        key={slotId}
+                        type="button"
+                        onClick={() => setActiveAttachmentSlot(slotId)}
+                        className={`shrink-0 border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${
+                          activeAttachmentSlot === slotId
+                            ? "border-lime-700 bg-lime-950/25 text-lime-400"
+                            : "border-zinc-800 bg-black text-zinc-500"
+                        }`}
+                      >
+                        {weaponAttachmentSlotLabels[slotId]}
+                        <span className="ml-2 text-zinc-600">
+                          {selectedAttachment ? "●" : "○"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {(() => {
+                  const weaponId = getWeaponIdForSlot(currentLoadout, customizeSlot);
+
+                  if (!weaponSupportsAttachmentSlot(weaponId, activeAttachmentSlot)) {
+                    return (
+                      <div className="border border-dashed border-zinc-800 bg-black/30 px-4 py-8 text-center">
+                        <p className="text-sm font-semibold text-zinc-600">
+                          This weapon does not support this slot.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  const selectedAttachmentId = getAttachmentIdForSlot(
+                    currentLoadout,
+                    customizeSlot,
+                    activeAttachmentSlot
+                  );
+                  const selectedAttachment = getAttachmentItem(selectedAttachmentId);
+                  const compatibleAttachments = getCompatibleAttachmentsFromStash(
+                    stashItems,
+                    weaponId,
+                    activeAttachmentSlot
+                  );
+
+                  return (
+                    <div className="grid gap-3">
+                      <div className="border border-zinc-800 bg-black/45 px-3 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                          Current {weaponAttachmentSlotLabels[activeAttachmentSlot]}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <p className="truncate text-base font-bold uppercase tracking-wide text-zinc-100">
+                            {selectedAttachment?.name ?? "Empty"}
+                          </p>
+
+                          {selectedAttachment && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateLoadout(
+                                  setWeaponAttachment(
+                                    currentLoadout,
+                                    customizeSlot,
+                                    activeAttachmentSlot,
+                                    ""
+                                  )
+                                )
+                              }
+                              className="border border-zinc-800 bg-zinc-950 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-400"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="max-h-[42vh] overflow-y-auto">
+                        {compatibleAttachments.length > 0 ? (
+                          <div className="grid gap-2">
+                            {compatibleAttachments.map((attachment) => {
+                              const isSelected = selectedAttachmentId === attachment.id;
+
+                              return (
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  onClick={() =>
+                                    updateLoadout(
+                                      setWeaponAttachment(
+                                        currentLoadout,
+                                        customizeSlot,
+                                        activeAttachmentSlot,
+                                        attachment.id
+                                      )
+                                    )
+                                  }
+                                  className={`border px-3 py-3 text-left ${
+                                    isSelected
+                                      ? "border-lime-700 bg-lime-950/25"
+                                      : "border-zinc-800 bg-black/45 active:bg-zinc-900"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="truncate text-base font-bold uppercase tracking-wide text-zinc-100">
+                                      {attachment.name}
+                                    </p>
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-lime-400">
+                                      {isSelected ? "Attached" : "Attach"}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+                                    {getAttachmentModifierText(attachment)}
+                                  </p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="border border-dashed border-zinc-800 bg-black/30 px-4 py-8 text-center">
+                            <p className="text-sm font-semibold text-zinc-600">
+                              No compatible attachments in stash.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeSlot && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80">
+            <div className="w-full max-w-[430px] border-t border-zinc-700 bg-zinc-950 shadow-2xl">
+              <div className="border-b border-zinc-800 px-4 py-3">
+                <div className="mx-auto mb-3 h-1.5 w-12 bg-zinc-700" />
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-500">
+                      Select
+                    </p>
+                    <h2 className="text-xl font-black uppercase tracking-wider text-zinc-100">
+                      {getSelectionTitle(activeSlot)}
+                    </h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlot(null)}
+                    className="border border-zinc-800 bg-black px-3 py-2 text-xs font-black uppercase tracking-wider text-zinc-400"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-[58vh] overflow-y-auto p-3">
+                {selectionItems.length > 0 ? (
+                  <div className="grid gap-2">
+                    {selectionItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="grid grid-cols-[1fr_auto] items-center gap-3 border border-zinc-800 bg-black/45 px-3 py-3"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSelectItem(activeSlot, item)}
+                          className="min-w-0 text-left"
+                        >
+                          <p className="truncate text-base font-bold uppercase tracking-wide text-zinc-100">
+                            {item.name}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+                            {item.category} · ${item.value}
+                          </p>
+                        </button>
+
+                        {item.category === "weapon" ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (activeSlot === "primary" || activeSlot === "secondary") {
+                                setCustomizeSlot(activeSlot);
+                                setActiveSlot(null);
+                                setActiveAttachmentSlot("opticId");
+                              }
+                            }}
+                            className="border border-lime-800/80 bg-lime-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-lime-400"
+                          >
+                            Customize
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleSelectItem(activeSlot, item)}
+                            className="border border-zinc-800 bg-zinc-950 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-400"
+                          >
+                            Equip
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border border-dashed border-zinc-800 bg-black/30 px-4 py-8 text-center">
+                    <p className="text-sm font-semibold text-zinc-600">
+                      No matching items in stash.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
