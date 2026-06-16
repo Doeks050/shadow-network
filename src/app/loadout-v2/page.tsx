@@ -9,14 +9,14 @@ import {
   saveStoredStash,
   type StoredStashItem,
 } from "@/lib/playerStash";
-import type { AttachmentItem, GameItem, ItemCategory } from "@/data/items";
+import type { AttachmentItem, GameItem, ItemCategory, MagazineItem } from "@/data/items";
 import {
   attachmentSlotIdToAttachmentSlot,
   type PlayerLoadout,
   type WeaponAttachmentSlotId,
 } from "@/data/loadout";
 import type { WeaponItem } from "@/data/items/weapons/types";
-import { isAttachmentCompatibleWithWeapon } from "@/lib/weaponStats";
+import { isAttachmentCompatibleWithWeapon, isMagazineCompatibleWithWeapon } from "@/lib/weaponStats";
 
 type LoadoutSlot = "primary" | "secondary" | "headgear" | "chestgear";
 type WeaponSlot = "primary" | "secondary";
@@ -65,7 +65,6 @@ const weaponAttachmentSlotOrder: WeaponAttachmentSlotId[] = [
   "tacticalId",
   "stockId",
 ];
-
 
 function getDisplayName(itemId: string, fallback = "Empty"): string {
   if (!itemId) return fallback;
@@ -130,31 +129,47 @@ function getDevTestStashItems(): StoredStashItem[] {
   return [
     { itemId: "m4a1", quantity: 1 },
     { itemId: "glock_17", quantity: 1 },
-    { itemId: "ak_74", quantity: 1 },
+    
     { itemId: "mp5", quantity: 1 },
 
     { itemId: "basic_helmet", quantity: 1 },
     { itemId: "soft_armor_vest", quantity: 1 },
     { itemId: "scout_rig", quantity: 1 },
 
-    { itemId: "m4_stanag_30", quantity: 3 },
-    { itemId: "glock_17_mag_17", quantity: 3 },
-    { itemId: "ak_74_mag_30", quantity: 3 },
-    { itemId: "mp5_mag_30", quantity: 3 },
+    
+    
+    
+    
 
-    { itemId: "556x45_fmj", quantity: 120 },
-    { itemId: "9x19_fmj", quantity: 120 },
-    { itemId: "545x39_fmj", quantity: 120 },
+    
+    
+    
 
-    { itemId: "red_dot_sight", quantity: 1 },
-    { itemId: "holographic_sight", quantity: 1 },
+    { itemId: "compact_scope", quantity: 1 },
+    { itemId: "mini_red_dot_sight", quantity: 1 },
     { itemId: "vertical_grip", quantity: 1 },
-    { itemId: "flashlight", quantity: 1 },
-    { itemId: "suppressor_556", quantity: 1 },
-    { itemId: "suppressor_9mm", quantity: 1 },
+    { itemId: "compact_flashlight", quantity: 1 },
+    { itemId: "flash_hider", quantity: 1 },
+    { itemId: "glock_suppressor", quantity: 1 },
+    { itemId: "standard_barrel", quantity: 1 },
+    { itemId: "short_barrel", quantity: 1 },
+    { itemId: "precision_barrel", quantity: 1 },
+    { itemId: "rifle_compensator", quantity: 1 },
+    { itemId: "angled_grip", quantity: 1 },
+    { itemId: "light_handstop", quantity: 1 },
+    { itemId: "light_stock", quantity: 1 },
+    { itemId: "stability_stock", quantity: 1 },
+    { itemId: "tactical_stock", quantity: 1 },
+    { itemId: "compact_reflex_sight", quantity: 1 },
+    { itemId: "pistol_red_dot_sight", quantity: 1 },
+    { itemId: "glock_compensator", quantity: 1 },
+    { itemId: "glock_ported_compensator", quantity: 1 },
+    { itemId: "compact_laser", quantity: 1 },
+    { itemId: "tactical_flashlight", quantity: 1 },
+    { itemId: "tactical_laser", quantity: 1 },
+
   ].filter((entry) => getItemById(entry.itemId) !== null);
 }
-
 
 function getWeaponItem(itemId: string): WeaponItem | null {
   const item = getItemById(itemId);
@@ -175,6 +190,78 @@ function getAttachmentItem(itemId: string): AttachmentItem | null {
 
   return item as AttachmentItem;
 }
+
+function getMagazineItem(itemId: string): MagazineItem | null {
+  const item = getItemById(itemId);
+
+  if (!item || item.category !== "magazine") {
+    return null;
+  }
+
+  return item as MagazineItem;
+}
+
+function getAttachedMagazineInstanceId(
+  loadout: PlayerLoadout,
+  weaponSlot: WeaponSlot
+): string {
+  return weaponSlot === "primary"
+    ? loadout.primaryMagazineInstanceId
+    : loadout.secondaryMagazineInstanceId;
+}
+
+function getCompatibleMagazinesFromStash(
+  stashItems: GameItem[],
+  weaponId: string
+): MagazineItem[] {
+  const weapon = getWeaponItem(weaponId);
+
+  if (!weapon) {
+    return [];
+  }
+
+  return stashItems
+    .filter((item): item is MagazineItem => item.category === "magazine")
+    .filter((magazine) => isMagazineCompatibleWithWeapon(weapon, magazine))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function attachMagazine(
+  loadout: PlayerLoadout,
+  weaponSlot: WeaponSlot,
+  magazineId: string
+): PlayerLoadout {
+  const instanceId = `${magazineId}_${Date.now()}`;
+
+  const magazine = getMagazineItem(magazineId);
+
+  if (!magazine) {
+    return loadout;
+  }
+
+  const nextMagazine = {
+    instanceId,
+    magazineItemId: magazineId,
+    loadedAmmoId: "",
+    loadedRounds: 0,
+    container: "chest" as const,
+  };
+
+  if (weaponSlot === "primary") {
+    return {
+      ...loadout,
+      primaryMagazineInstanceId: instanceId,
+      carriedMagazines: [...loadout.carriedMagazines, nextMagazine],
+    };
+  }
+
+  return {
+    ...loadout,
+    secondaryMagazineInstanceId: instanceId,
+    carriedMagazines: [...loadout.carriedMagazines, nextMagazine],
+  };
+}
+
 
 function getWeaponIdForSlot(loadout: PlayerLoadout, slot: WeaponSlot): string {
   return slot === "primary" ? loadout.primaryWeaponId : loadout.secondaryWeaponId;
@@ -280,7 +367,6 @@ function setWeaponAttachment(
     },
   };
 }
-
 
 function TopHud() {
   return (
@@ -746,6 +832,18 @@ export default function LoadoutV2Page() {
 
               <div className="grid gap-3 p-3">
                 <div className="flex gap-2 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveAttachmentSlot("magazineId" as WeaponAttachmentSlotId)}
+                    className={`shrink-0 border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${
+                      (activeAttachmentSlot as string) === "magazineId"
+                        ? "border-lime-700 bg-lime-950/25 text-lime-400"
+                        : "border-zinc-800 bg-black text-zinc-500"
+                    }`}
+                  >
+                    Magazine
+                  </button>
+
                   {weaponAttachmentSlotOrder.map((slotId) => {
                     const weaponId = getWeaponIdForSlot(currentLoadout, customizeSlot);
 
@@ -779,6 +877,75 @@ export default function LoadoutV2Page() {
 
                 {(() => {
                   const weaponId = getWeaponIdForSlot(currentLoadout, customizeSlot);
+
+                  if ((activeAttachmentSlot as string) === "magazineId") {
+                    const selectedInstanceId = getAttachedMagazineInstanceId(
+                      currentLoadout,
+                      customizeSlot
+                    );
+                    const selectedMagazine = currentLoadout.carriedMagazines.find(
+                      (magazine) => magazine.instanceId === selectedInstanceId
+                    );
+                    const selectedMagazineItem = selectedMagazine
+                      ? getMagazineItem(selectedMagazine.magazineItemId)
+                      : null;
+                    const compatibleMagazines = getCompatibleMagazinesFromStash(
+                      stashItems,
+                      weaponId
+                    );
+
+                    return (
+                      <div className="grid gap-3">
+                        <div className="border border-zinc-800 bg-black/45 px-3 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                            Current Magazine
+                          </p>
+                          <p className="mt-2 truncate text-base font-bold uppercase tracking-wide text-zinc-100">
+                            {selectedMagazineItem
+                              ? `${selectedMagazineItem.name} · ${selectedMagazine?.loadedRounds ?? 0}/${selectedMagazineItem.capacity}`
+                              : "No magazine"}
+                          </p>
+                        </div>
+
+                        <div className="max-h-[42vh] overflow-y-auto">
+                          {compatibleMagazines.length > 0 ? (
+                            <div className="grid gap-2">
+                              {compatibleMagazines.map((magazine) => (
+                                <button
+                                  key={magazine.id}
+                                  type="button"
+                                  onClick={() =>
+                                    updateLoadout(
+                                      attachMagazine(currentLoadout, customizeSlot, magazine.id)
+                                    )
+                                  }
+                                  className="border border-zinc-800 bg-black/45 px-3 py-3 text-left active:bg-zinc-900"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="truncate text-base font-bold uppercase tracking-wide text-zinc-100">
+                                      {magazine.name}
+                                    </p>
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-lime-400">
+                                      Attach
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+                                    {magazine.capacity} rounds · DMG +{magazine.damageOutputModifier} · HDL {magazine.handlingModifier}
+                                  </p>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="border border-dashed border-zinc-800 bg-black/30 px-4 py-8 text-center">
+                              <p className="text-sm font-semibold text-zinc-600">
+                                No compatible magazines in stash.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   if (!weaponSupportsAttachmentSlot(weaponId, activeAttachmentSlot)) {
                     return (
