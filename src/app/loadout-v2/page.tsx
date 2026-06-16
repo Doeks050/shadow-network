@@ -20,6 +20,7 @@ import { isAttachmentCompatibleWithWeapon, isMagazineCompatibleWithWeapon } from
 
 type LoadoutSlot = "primary" | "secondary" | "headgear" | "chestgear";
 type WeaponSlot = "primary" | "secondary";
+type CustomizeTab = WeaponAttachmentSlotId | "magazine";
 
 type WeaponRowProps = {
   label: string;
@@ -613,7 +614,7 @@ export default function LoadoutV2Page() {
   const [activeSlot, setActiveSlot] = useState<LoadoutSlot | null>(null);
   const [customizeSlot, setCustomizeSlot] = useState<WeaponSlot | null>(null);
   const [activeAttachmentSlot, setActiveAttachmentSlot] =
-    useState<WeaponAttachmentSlotId>("opticId");
+    useState<CustomizeTab>("opticId");
 
   function refreshStashItems() {
     const storedStash = getStoredStash();
@@ -834,9 +835,9 @@ export default function LoadoutV2Page() {
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   <button
                     type="button"
-                    onClick={() => setActiveAttachmentSlot("magazineId" as WeaponAttachmentSlotId)}
+                    onClick={() => setActiveAttachmentSlot("magazine")}
                     className={`shrink-0 border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${
-                      (activeAttachmentSlot as string) === "magazineId"
+                      activeAttachmentSlot === "magazine"
                         ? "border-lime-700 bg-lime-950/25 text-lime-400"
                         : "border-zinc-800 bg-black text-zinc-500"
                     }`}
@@ -878,7 +879,7 @@ export default function LoadoutV2Page() {
                 {(() => {
                   const weaponId = getWeaponIdForSlot(currentLoadout, customizeSlot);
 
-                  if ((activeAttachmentSlot as string) === "magazineId") {
+                  if (activeAttachmentSlot === "magazine") {
                     const selectedInstanceId = getAttachedMagazineInstanceId(
                       currentLoadout,
                       customizeSlot
