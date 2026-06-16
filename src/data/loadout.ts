@@ -1,6 +1,6 @@
 import type { AttachmentSlot } from "@/data/items";
 
-export type CarryContainer = "pockets" | "chest";
+export type CarryContainer = "pockets" | "chest" | "backpack" | "pouch";
 
 export type WeaponAttachmentSlots = {
   opticId: string;
@@ -39,6 +39,9 @@ export type PlayerLoadout = {
   headgearId: string;
   armorId: string;
   rigId: string;
+  backpackId: string;
+  pouchId: string;
+
   carriedItems: CarriedItemStack[];
   carriedMagazines: CarriedMagazine[];
 };
@@ -76,6 +79,9 @@ export const loadout: PlayerLoadout = {
   headgearId: "basic_helmet",
   armorId: "soft_armor_vest",
   rigId: "scout_rig",
+  backpackId: "basic_backpack",
+  pouchId: "basic_pouch",
+
   carriedItems: [],
   carriedMagazines: [],
 };

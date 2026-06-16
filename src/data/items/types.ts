@@ -9,6 +9,7 @@ export type ItemCategory =
   | "helmet"
   | "rig"
   | "backpack"
+  | "pouch"
   | "medical"
   | "attachment"
   | "valuable"
@@ -110,6 +111,13 @@ export type BackpackItem = BaseItem & {
   weight: number;
 };
 
+export type PouchItem = BaseItem & {
+  category: "pouch";
+  slots: number;
+  secureSlots: number;
+  weight: number;
+};
+
 export type MedicalItem = BaseItem & {
   category: "medical";
   healingPower: number;
@@ -149,6 +157,7 @@ export type GameItem =
   | HelmetItem
   | RigItem
   | BackpackItem
+  | PouchItem
   | MedicalItem
   | AttachmentItem
   | ValuableItem

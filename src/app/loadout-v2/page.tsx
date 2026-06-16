@@ -304,16 +304,14 @@ export default function LoadoutV2Page() {
               />
             </Panel>
 
-            <div className="grid grid-cols-2 gap-2">
               <Panel title="Loadout Stats">
-                <MiniLine icon="♜" label="Weight" value="34.7 / 65 kg" />
-                <MiniLine icon="◆" label="Armor" value="110 / 110" />
-                <MiniLine icon="↯" label="Mobility" value="82 / 100" />
-                <MiniLine icon="⌁" label="Ergonomics" value="68 / 100" />
-                <MiniLine icon="≋" label="Noise" value="32 / 100" />
-                <MiniLine icon="✚" label="Survival Chance" value="72%" />
+                <div className="grid grid-cols-2">
+                  <MiniLine icon="♜" label="Weight" value="34.7 / 65 kg" />
+                  <MiniLine icon="◆" label="Armor" value="110 / 110" />
+                  <MiniLine icon="↯" label="Mobility" value="82 / 100" />
+                  <MiniLine icon="⌁" label="Ergonomics" value="68 / 100" />
+                </div>
               </Panel>
-            </div>
           </div>
 
           <ConfirmButton />
