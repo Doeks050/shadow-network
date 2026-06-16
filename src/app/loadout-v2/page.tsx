@@ -25,7 +25,7 @@ type CustomizeTab = WeaponAttachmentSlotId | "magazine";
 type WeaponRowProps = {
   label: string;
   name: string;
-  caliber: string;
+  detail: string;
   visual: string;
   onClick: () => void;
 };
@@ -82,6 +82,32 @@ function getWeaponCaliber(itemId: string): string {
   return item.ammoType.toUpperCase();
 }
 
+function getWeaponRowDetail(loadout: PlayerLoadout, weaponSlot: WeaponSlot): string {
+  const weaponId = getWeaponIdForSlot(loadout, weaponSlot);
+  const caliber = getWeaponCaliber(weaponId);
+  const magazineInstanceId = getAttachedMagazineInstanceId(loadout, weaponSlot);
+
+  if (!magazineInstanceId) {
+    return `${caliber} · No magazine`;
+  }
+
+  const magazineInstance = loadout.carriedMagazines.find(
+    (magazine) => magazine.instanceId === magazineInstanceId
+  );
+
+  if (!magazineInstance) {
+    return `${caliber} · No magazine`;
+  }
+
+  const magazineItem = getMagazineItem(magazineInstance.magazineItemId);
+
+  if (!magazineItem) {
+    return `${caliber} · Unknown magazine`;
+  }
+
+  return `${caliber} · ${magazineItem.name} · ${magazineInstance.loadedRounds}/${magazineItem.capacity}`;
+}
+
 function getDurabilityText(itemId: string): string {
   const item = getItemById(itemId);
 
@@ -136,6 +162,22 @@ function getDevTestStashItems(): StoredStashItem[] {
     { itemId: "basic_helmet", quantity: 1 },
     { itemId: "soft_armor_vest", quantity: 1 },
     { itemId: "scout_rig", quantity: 1 },
+
+    { itemId: "stanag_30_mag", quantity: 3 },
+    { itemId: "stanag_45_mag", quantity: 2 },
+    { itemId: "stanag_60_drum", quantity: 1 },
+    { itemId: "glock_17_mag_17", quantity: 3 },
+    { itemId: "glock_17_mag_24", quantity: 2 },
+    { itemId: "glock_17_drum_50", quantity: 1 },
+    { itemId: "mp5_mag_30", quantity: 3 },
+    { itemId: "mp5_drum_50", quantity: 1 },
+
+    { itemId: "ammo_556_fmj", quantity: 180 },
+    { itemId: "ammo_556_ap", quantity: 60 },
+    { itemId: "ammo_556_hp", quantity: 60 },
+    { itemId: "ammo_9x19_fmj", quantity: 180 },
+    { itemId: "ammo_9x19_ap", quantity: 60 },
+    { itemId: "ammo_9x19_hp", quantity: 60 },
 
     
     
@@ -226,6 +268,67 @@ function getCompatibleMagazinesFromStash(
     .filter((magazine) => isMagazineCompatibleWithWeapon(weapon, magazine))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+function getCompatiblePreparedMagazines(
+  loadout: PlayerLoadout,
+  weaponId: string
+) {
+  const weapon = getWeaponItem(weaponId);
+
+  if (!weapon) {
+    return [];
+  }
+
+  return loadout.carriedMagazines.filter((magazineInstance) => {
+    const magazineItem = getMagazineItem(magazineInstance.magazineItemId);
+
+    if (!magazineItem) {
+      return false;
+    }
+
+    return isMagazineCompatibleWithWeapon(weapon, magazineItem);
+  });
+}
+
+function getMagazineDisplayLine(instanceId: string, loadout: PlayerLoadout): string {
+  const magazineInstance = loadout.carriedMagazines.find(
+    (magazine) => magazine.instanceId === instanceId
+  );
+
+  if (!magazineInstance) {
+    return "No magazine";
+  }
+
+  const magazineItem = getMagazineItem(magazineInstance.magazineItemId);
+  const ammoItem = getItemById(magazineInstance.loadedAmmoId);
+
+  if (!magazineItem) {
+    return "Unknown magazine";
+  }
+
+  return `${magazineItem.name} · ${magazineInstance.loadedRounds}/${magazineItem.capacity}${
+    ammoItem ? ` · ${ammoItem.name}` : ""
+  }`;
+}
+
+function selectPreparedMagazine(
+  loadout: PlayerLoadout,
+  weaponSlot: WeaponSlot,
+  instanceId: string
+): PlayerLoadout {
+  if (weaponSlot === "primary") {
+    return {
+      ...loadout,
+      primaryMagazineInstanceId: instanceId,
+    };
+  }
+
+  return {
+    ...loadout,
+    secondaryMagazineInstanceId: instanceId,
+  };
+}
+
 
 function attachMagazine(
   loadout: PlayerLoadout,
@@ -449,7 +552,7 @@ function Panel({
   );
 }
 
-function WeaponRow({ label, name, caliber, visual, onClick }: WeaponRowProps) {
+function WeaponRow({ label, name, detail, visual, onClick }: WeaponRowProps) {
   return (
     <button
       type="button"
@@ -463,7 +566,7 @@ function WeaponRow({ label, name, caliber, visual, onClick }: WeaponRowProps) {
         <p className="mt-1 truncate text-lg font-semibold uppercase tracking-wide text-zinc-100">
           {name}
         </p>
-        <p className="mt-0.5 text-xs font-medium text-zinc-500">{caliber}</p>
+        <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">{detail}</p>
       </div>
 
       <div className="flex h-14 items-center justify-center overflow-hidden border border-zinc-800 bg-black/45">
@@ -725,14 +828,14 @@ export default function LoadoutV2Page() {
               <WeaponRow
                 label="Primary Weapon"
                 name={getDisplayName(currentLoadout.primaryWeaponId)}
-                caliber={getWeaponCaliber(currentLoadout.primaryWeaponId)}
+                detail={getWeaponRowDetail(currentLoadout, "primary")}
                 visual="▰"
                 onClick={() => setActiveSlot("primary")}
               />
               <WeaponRow
                 label="Secondary Weapon"
                 name={getDisplayName(currentLoadout.secondaryWeaponId)}
-                caliber={getWeaponCaliber(currentLoadout.secondaryWeaponId)}
+                detail={getWeaponRowDetail(currentLoadout, "secondary")}
                 visual="▰"
                 onClick={() => setActiveSlot("secondary")}
               />
@@ -890,8 +993,8 @@ export default function LoadoutV2Page() {
                     const selectedMagazineItem = selectedMagazine
                       ? getMagazineItem(selectedMagazine.magazineItemId)
                       : null;
-                    const compatibleMagazines = getCompatibleMagazinesFromStash(
-                      stashItems,
+                    const compatibleMagazines = getCompatiblePreparedMagazines(
+                      currentLoadout,
                       weaponId
                     );
 
@@ -913,25 +1016,31 @@ export default function LoadoutV2Page() {
                             <div className="grid gap-2">
                               {compatibleMagazines.map((magazine) => (
                                 <button
-                                  key={magazine.id}
+                                  key={magazine.instanceId}
                                   type="button"
                                   onClick={() =>
                                     updateLoadout(
-                                      attachMagazine(currentLoadout, customizeSlot, magazine.id)
+                                      selectPreparedMagazine(currentLoadout, customizeSlot, magazine.instanceId)
                                     )
                                   }
                                   className="border border-zinc-800 bg-black/45 px-3 py-3 text-left active:bg-zinc-900"
                                 >
                                   <div className="flex items-center justify-between gap-3">
                                     <p className="truncate text-base font-bold uppercase tracking-wide text-zinc-100">
-                                      {magazine.name}
+                                      {getMagazineDisplayLine(magazine.instanceId, currentLoadout)}
                                     </p>
                                     <span className="text-[10px] font-black uppercase tracking-wider text-lime-400">
                                       Attach
                                     </span>
                                   </div>
                                   <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
-                                    {magazine.capacity} rounds · DMG +{magazine.damageOutputModifier} · HDL {magazine.handlingModifier}
+                                    {(() => {
+                                        const magazineItem = getMagazineItem(magazine.magazineItemId);
+
+                                        return magazineItem
+                                          ? `Capacity ${magazineItem.capacity} · ${magazine.container}`
+                                          : "Unknown magazine";
+                                      })()}
                                   </p>
                                 </button>
                               ))}
